@@ -34,8 +34,7 @@
       "^testSetup(.*)$": "<rootDir>/src/testSetup$1",
       "^src(.*)$": "<rootDir>/src$1"
     },
-    "transformIgnorePatterns": [
-    ]
+    "transformIgnorePatterns": []
   },
   "lint-staged": {
     "*.js": [
