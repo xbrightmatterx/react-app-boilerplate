@@ -1,21 +1,32 @@
-// import React from 'react'
-import ReactDOM from 'react-dom'
-import { Router, Route, Switch } from 'react-router-dom'
-// eslint-disable-next-line import/no-extraneous-dependencies
-import createBrowserHistory from 'history/createBrowserHistory'
+/* eslint-disable no-underscore-dangle */
+import React from 'react'
+import { render } from 'react-dom'
+import { Route, BrowserRouter } from 'react-router-dom'
+import { createStore, applyMiddleware, compose } from 'redux'
+import { Provider } from 'react-redux'
+import thunk from 'redux-thunk'
 
-const history = createBrowserHistory()
+import App from './components/App'
 
-const title = 'Initial React Webpack Setup'
+import './styling/globalStyles.less'
+import './styling/semantic.less'
 
-ReactDOM.render(
-  <Router history={history}>
-    <div>
-      <Switch>
-        <Route exact path="/" render={() => <div>{title}</div>} />
-        <Route path="/hello" render={() => <div>HELLO</div>} />
-      </Switch>
-    </div>
-  </Router>,
+import reducers from './reducerSource'
+
+const middleware = [thunk]
+
+const finalCreateStore = compose(
+  applyMiddleware(...middleware),
+  (STAGE !== 'staging' || STAGE !== 'production') && window.__REDUX_DEVTOOLS_EXTENSION__ ? window.__REDUX_DEVTOOLS_EXTENSION__() : f => f
+)(createStore)
+
+const store = finalCreateStore(reducers)
+
+render(
+  <Provider store={store}>
+    <BrowserRouter>
+      <Route path="/" component={App} />
+    </BrowserRouter>
+  </Provider>,
   document.getElementById('app')
 )

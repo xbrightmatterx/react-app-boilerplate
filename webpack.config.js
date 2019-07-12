@@ -4,20 +4,37 @@
 const execSync = require('child_process').execSync
 const path = require('path')
 const webpack = require('webpack')
+const autoprefixer = require('autoprefixer')
+const HtmlWebpackPlugin = require('html-webpack-plugin')
 const ExtractTextPlugin = require('extract-text-webpack-plugin')
+const OptimizeCssAssetsPlugin = require('optimize-css-assets-webpack-plugin')
 
 const TARGET = process.env.npm_lifecycle_event
-// const VERSION = execSync('git rev-parse --short HEAD')
+const VERSION = execSync('git rev-parse --short HEAD')
+const isDev = process.env.STAGE !== 'staging' || process.env.STAGE !== 'production'
+// TODO: ADD PRODUCTION URL HERE WHEN READY
+// TODO: MAYBE MOVE HS URLS TO AN ENV VAR IN CIRCLECI?
+let ASSETS_URL = '0.0.0.0:8080'
+if (process.env.STAGE === 'staging') {
+  ASSETS_URL = 'ENTER_STAGING_URL'
+} else if (process.env.STAGE !== 'production') {
+  ASSETS_URL = 'ENTER_PRODUCTION_URL'
+}
+
+const cssFilename = '[name].[hash].css'
 
 // Default config
 let devtool = ''
 
-let entry = { bundle: ['react-hot-loader/patch', './src/index.js'] }
+let entry = {
+  polyfills: ['./src/lib/polyfills.js'],
+  bundle: [isDev && 'react-hot-loader/patch', './src/index.js']
+}
 
 let output = {
   path: path.join(__dirname, 'dist'),
   filename: '[name].js',
-  publicPath: 'http://localhost:8080'
+  publicPath: '/'
 }
 
 // Not currently using webpack for test so externals wont really work for us until we get that working
@@ -48,13 +65,30 @@ switch (TARGET) {
 let plugins = [
   new webpack.DefinePlugin({
     __DEV__: TARGET !== 'build:webpack',
-    'process.env.NODE_ENV': TARGET === 'build:webpack' ? JSON.stringify('production') : JSON.stringify(null)
+    DEV_HOSTNAME: JSON.stringify(process.env.DEV_HOSTNAME || 'localhost:3005'),
+    ETL_HOSTNAME: JSON.stringify(process.env.ETL_HOSTNAME || 'localhost:3005'),
+    STAGE: JSON.stringify(process.env.STAGE),
+    'process.env.NODE_ENV':
+      TARGET === 'build:webpack:staging' || TARGET === 'build:webpack:prod' ? JSON.stringify('production') : JSON.stringify('development')
+  }),
+  new HtmlWebpackPlugin({
+    template: 'public/views/index.ejs',
+    chunksSortMode: function(a, b) {
+      var order = ['polyfills', 'bundle']
+      return order.indexOf(a.names[0]) - order.indexOf(b.names[0])
+    }
+  }),
+  new ExtractTextPlugin({ allChunks: true, filename: 'styles.css' }),
+  new OptimizeCssAssetsPlugin({
+    assetNameRegExp: /styles.css/g,
+    cssProcessor: require('cssnano'),
+    cssProcessorOptions: { discardComments: { removeAll: true } },
+    canPrint: true
   })
 ]
 
 if (process.env.NODE_ENV === 'production') {
   plugins = plugins.concat([
-    new webpack.optimize.DedupePlugin(),
     new webpack.optimize.OccurrenceOrderPlugin(true),
     new webpack.optimize.UglifyJsPlugin({
       mangle: true,
@@ -69,7 +103,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 if (process.env.NODE_ENV === 'staging') {
-  plugins = plugins.concat([new webpack.optimize.DedupePlugin(), new webpack.optimize.OccurrenceOrderPlugin(true)])
+  plugins = plugins.concat([new webpack.optimize.OccurrenceOrderPlugin(true)])
 }
 
 module.exports = {
@@ -85,46 +119,49 @@ module.exports = {
         loader: 'babel-loader'
       },
       {
-        test: /\.scss$/,
-        exclude: [],
-        loader: ExtractTextPlugin.extract(
-          'css?-autoprefixer&modules&importLoaders=1&localIdentName=[name]__[local]___[hash:base64:5]!autoprefixer-loader?browsers=ie 10!sass'
-        )
+        test: /\.css$/,
+        loaders: ['style-loader', 'css-loader', 'autoprefixer-loader?browsers=ie 10']
+      },
+      {
+        test: /\.(css|less)$/,
+        exclude: [/node_modules/],
+        loader: ExtractTextPlugin.extract({
+          filename: cssFilename,
+          fallback: 'style-loader',
+          use: [
+            'css-loader',
+            {
+              loader: 'postcss-loader',
+              options: {
+                // Necessary for external CSS imports to work
+                // https://github.com/facebookincubator/create-react-app/issues/2677
+                ident: 'postcss',
+                plugins: () => [autoprefixer(), require('postcss-flexbugs-fixes')]
+              }
+            },
+            'less-loader'
+          ]
+        })
       },
       {
         test: /\.(png|jpg|svg)$/,
-        loader: TARGET !== 'build:webpack' ? 'url' : `file?publicPath=`
+        loader: TARGET !== 'build:webpack' ? 'url-loader' : `file-loader?publicPath=${ASSETS_URL}/&name=[name].[ext]`
       },
-      { test: /\.json$/, loader: 'json' },
-      { test: /fonts\/.*\.(woff(2)?|eot|ttf|svg)/, loader: 'file?name=fonts/[name].[ext]' }
+      { test: /\.json$/, loader: 'json-loader' },
+      { test: /fonts\/.*\.(woff(2)?|eot|ttf|svg)/, loader: 'url-loader?limit=10000&mimetype=application/font-woff' }
     ]
   },
-  // sassLoader: {
-  //   data: `@import "${path.resolve(__dirname, 'src/theme/index.scss')}";`
-  // },
   resolve: {
-    extensions: ['*', '.js', '.jsx', '.css', '.scss', '.coffee', '.json'],
+    extensions: ['*', '.js', '.jsx', '.css', '.scss', 'less', '.json'],
     alias: {
-      // src: path.join(__dirname, 'src'),
-      // actions: path.join(__dirname, 'src/actions'),
-      // components: path.join(__dirname, 'src/components'),
-      // constants: path.join(__dirname, 'src/constants'),
-      // ActionTypes: path.join(__dirname, 'src/constants/ActionTypes'),
-      // i18n: path.join(__dirname, 'src/i18n'),
-      // metrics: path.join(__dirname, 'src/metrics'),
-      // reducers: path.join(__dirname, 'src/reducers'),
-      // schemas: path.join(__dirname, 'src/schemas'),
-      // routes: path.join(__dirname, 'src/routes'),
-      // grid: 'flexboxgrid/dist/flexboxgrid.css',
-      // assets: path.join(__dirname, 'src/assets'),
-      // requests: path.join(__dirname, 'src/requests'),
-      // lib: path.join(__dirname, 'src/lib'),
-      // makona: path.join(__dirname, 'src/makona'),
-      // fixtures: path.join(__dirname, 'test/fixtures')
+      '../../theme.config$': path.join(__dirname, 'src/styling/theme.config')
     }
   },
   devServer: {
-    contentBase: './dist',
+    inline: true,
+    port: 8080,
+    disableHostCheck: true,
+    historyApiFallback: true,
     headers: { 'Access-Control-Allow-Origin': '*' }
   },
   plugins
